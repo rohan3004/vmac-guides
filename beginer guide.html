@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>macOS on VMware: A Beginner's Guide</title>
+    <link rel="icon" href="https://www.rohandev.online/favicon.ico" />
+    <style>
+        /* ---  Apple-Inspired Design System --- */
+        :root {
+            --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            --font-mono: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
+            --color-bg: #111217;
+            --color-primary-text: #f5f5f7;
+            --color-secondary-text: #a1a1a6;
+            --color-accent-blue: #0A84FF;
+            --color-accent-green: #30D158;
+            --color-accent-red: #FF453A;
+            --color-accent-yellow: #FFD60A;
+            --glass-bg: rgba(35, 35, 45, 0.5);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --glass-blur: 24px;
+        }
+
+        /* --- Base & Reset --- */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--color-bg);
+            color: var(--color-primary-text);
+            line-height: 1.7;
+            overflow-x: hidden;
+            cursor: none; /* Hide default cursor */
+        }
+        body.mobile-nav-open { overflow: hidden; }
+        ::selection { background: var(--color-accent-blue); color: white; }
+
+        /* --- Custom Cursor --- */
+        #cursor, #cursor-follower {
+            position: fixed; top: 0; left: 0; pointer-events: none; z-index: 9999; border-radius: 50%;
+            transition: transform 0.2s ease-out, opacity 0.3s ease-out;
+        }
+        #cursor { width: 8px; height: 8px; background-color: var(--color-accent-blue); }
+        #cursor-follower {
+            width: 40px; height: 40px; background-color: rgba(10, 132, 255, 0.2); border: 1px solid rgba(10, 132, 255, 0.3);
+            transition: transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1), opacity 0.3s ease-out, background-color 0.3s ease;
+        }
+        #cursor.active { transform: scale(0.5); }
+        #cursor-follower.active { transform: scale(1.5); background-color: rgba(10, 132, 255, 0.3); }
+
+
+        /* --- Animated Background --- */
+        #bg-blurs { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; overflow: hidden; }
+        .blur-shape {
+            position: absolute; border-radius: 50%; filter: blur(150px); opacity: 0.5; transition: transform 0.8s ease-out;
+        }
+        .shape1 { width: 50vmax; height: 50vmax; background: rgba(0, 122, 255, 0.3); top: -20vh; left: -20vw; }
+        .shape2 { width: 40vmax; height: 40vmax; background: rgba(88, 86, 214, 0.2); bottom: -10vh; right: -15vw; }
+
+        /* --- Header & Footer --- */
+        .page-header {
+            position: fixed; top: 0; left: 0; width: 100%; height: 56px; z-index: 10;
+            background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+            border-bottom: 1px solid var(--glass-border); padding: 0 2rem;
+        }
+        .page-header-content {
+            max-width: 1400px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; height: 100%;
+        }
+        .page-header-content .logo { font-weight: 600; font-size: 1.1rem; }
+        .header-nav ul { display: flex; gap: 0.5rem; list-style: none; }
+        .header-nav a {
+            color: var(--color-secondary-text); text-decoration: none; padding: 0.5rem 1rem; border-radius: 8px;
+            transition: color 0.3s ease, background-color 0.3s ease; font-size: 0.9rem; position: relative;
+        }
+        .header-nav a:hover { color: var(--color-primary-text); background-color: rgba(255, 255, 255, 0.05); }
+        .header-nav a.active { color: var(--color-primary-text); font-weight: 500; }
+        
+        .hamburger-btn {
+            display: none; background: none; border: none; padding: 0.5rem; z-index: 1001; position: relative;
+        }
+        .hamburger-btn .line {
+            width: 24px; height: 2px; background-color: var(--color-primary-text); margin: 5px 0;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+        .hamburger-btn.is-active .line:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+        .hamburger-btn.is-active .line:nth-child(2) { opacity: 0; }
+        .hamburger-btn.is-active .line:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+        .mobile-nav {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(17, 18, 23, 0.8); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.4s ease;
+        }
+        .mobile-nav.is-active { opacity: 1; pointer-events: auto; }
+        .mobile-nav ul { list-style: none; text-align: center; }
+        .mobile-nav li { opacity: 0; transform: translateY(20px); transition: opacity 0.4s ease, transform 0.4s ease; }
+        .mobile-nav.is-active li { opacity: 1; transform: translateY(0); }
+        .mobile-nav.is-active li:nth-child(1) { transition-delay: 0.2s; }
+        .mobile-nav.is-active li:nth-child(2) { transition-delay: 0.3s; }
+        .mobile-nav.is-active li:nth-child(3) { transition-delay: 0.4s; }
+        .mobile-nav a { font-size: 2rem; font-weight: 600; color: var(--color-primary-text); padding: 1rem; display: block; text-decoration: none; }
+
+        .scroll-progress-bar {
+            position: absolute; bottom: -1px; left: 0; height: 1px; background-color: var(--color-accent-blue); width: 0; transition: width 0.1s ease-out;
+        }
+        .page-footer {
+            border-top: 1px solid var(--glass-border); border-bottom: none; margin-top: 4rem;
+            background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+        }
+        .page-footer p {
+            max-width: 1400px; margin: 0 auto; padding: 2rem 0; text-align: center; font-size: 0.8rem; color: var(--color-secondary-text);
+        }
+
+        /* --- Main Layout --- */
+        .container { display: grid; grid-template-columns: 240px 1fr; gap: 2rem; max-width: 1400px; margin: 0 auto; padding: 6rem 2rem 0; }
+
+        /* --- Sidebar & Content --- */
+        #sidebar { position: sticky; top: calc(56px + 2rem); height: calc(100vh - 56px - 4rem); align-self: start; }
+        #sidebar nav { position: relative; }
+        #sidebar nav h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-secondary-text); margin-bottom: 1rem; padding-left: 1rem; }
+        #sidebar nav ul { list-style: none; }
+        #sidebar nav a {
+            display: block; padding: 0.5rem 1rem; color: var(--color-secondary-text); text-decoration: none; font-size: 0.9rem; border-radius: 8px;
+            transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease; position: relative;
+        }
+        #sidebar nav a:hover { color: var(--color-primary-text); background-color: rgba(255, 255, 255, 0.05); transform: translateX(5px); }
+        #sidebar nav a.active { color: var(--color-primary-text); font-weight: 600; }
+        #sidebar-indicator {
+            position: absolute; left: 0; width: 3px; background-color: var(--color-accent-blue); border-radius: 2px;
+            transition: top 0.4s cubic-bezier(0.22, 1, 0.36, 1), height 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        main { min-width: 0; }
+        .content-section { padding-top: 2rem; margin-bottom: 4rem; opacity: 0; transform: translateY(20px); transition: opacity 0.6s ease-out, transform 0.6s ease-out; }
+        .content-section.visible { opacity: 1; transform: translateY(0); }
+
+        /* --- Typography & Elements --- */
+        h1 { font-size: 3rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.5rem; line-height: 1.1; }
+        .hero-subtitle { font-size: 1.25rem; color: var(--color-secondary-text); max-width: 60ch; margin-bottom: 1rem; }
+        .stagger-animation span { display: inline-block; opacity: 0; transform: translateY(20px); transition: opacity 0.6s ease, transform 0.6s ease; }
+        .doc-meta { font-size: 0.8rem; color: var(--color-secondary-text); margin-bottom: 4rem; }
+        h2 { font-size: 2rem; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 1.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--glass-border); }
+        h3 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; margin: 1.5rem 0 0.75rem 0; }
+        p, li { font-size: 1rem; color: var(--color-secondary-text); margin-bottom: 1rem; max-width: 70ch; }
+        ul, ol { padding-left: 1.5rem; }
+        a { color: var(--color-accent-blue); text-decoration: none; font-weight: 500; }
+        a:hover { text-decoration: underline; }
+        strong { color: var(--color-primary-text); font-weight: 600; }
+        code { font-family: var(--font-mono); background-color: rgba(255,255,255,0.1); padding: 0.2em 0.4em; border-radius: 4px; font-size: 0.9em; }
+
+        .glass-card {
+            background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+            border: 1px solid var(--glass-border); border-radius: 16px; padding: 1.5rem; margin-bottom: 1rem; position: relative; overflow: hidden;
+            transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s ease;
+        }
+        .glass-card:hover { transform: perspective(1000px) rotateX(5deg) translateY(-5px); box-shadow: 0 15px 35px rgba(0,0,0,0.3); }
+        .glass-card::after { /* Shimmer effect */
+            content: ''; position: absolute; top: 0; left: -150%; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+            transition: left 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .glass-card:hover::after { left: 150%; }
+        
+        .code-block { position: relative; margin: 1.5rem 0; }
+        .code-block pre { font-family: var(--font-mono); background-color: rgba(0, 0, 0, 0.4); border: 1px solid var(--glass-border); border-radius: 12px; padding: 1.5rem; overflow-x: auto; font-size: 0.9rem; line-height: 1.6; }
+        .code-block .copy-btn {
+            position: absolute; top: 1rem; right: 1rem; background-color: rgba(255, 255, 255, 0.1); border: 1px solid var(--glass-border);
+            color: var(--color-primary-text); font-family: var(--font-sans); font-size: 0.8rem; padding: 0.3rem 0.8rem; border-radius: 8px; cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        .code-block .copy-btn:hover { background-color: rgba(255, 255, 255, 0.2); }
+
+        .step { position: relative; padding-left: 3rem; margin-bottom: 2.5rem; }
+        .step-number { position: absolute; left: 0; top: -5px; font-size: 2.5rem; font-weight: 700; color: var(--color-accent-blue); opacity: 0.5; }
+        
+        .info-box { padding: 1rem 1.5rem; border-radius: 12px; border-left: 4px solid; margin: 1.5rem 0; font-size: 0.9rem; }
+        .info-box h4 { display: flex; align-items: center; font-size: 1rem; margin: 0 0 0.5rem 0; color: var(--color-primary-text); }
+        .info-box h4 svg { margin-right: 0.75rem; width: 18px; height: 18px; flex-shrink: 0; }
+        .info-box.tip { background-color: rgba(48, 209, 88, 0.1); border-color: var(--color-accent-green); }
+        .info-box.warning { background-color: rgba(255, 69, 58, 0.1); border-color: var(--color-accent-red); }
+        .info-box.tech { background-color: rgba(255, 214, 10, 0.1); border-color: var(--color-accent-yellow); }
+
+        /* --- Responsive Design --- */
+        @media (max-width: 1024px) {
+            .container { grid-template-columns: 1fr; padding: 6rem 1rem 0; }
+            #sidebar { display: none; }
+            h1 { font-size: 2.5rem; }
+            h2 { font-size: 1.75rem; }
+            .header-nav { display: none; }
+            .hamburger-btn { display: block; }
+        }
+    </style>
+</head>
+<body>
+    <div id="cursor"></div>
+    <div id="cursor-follower"></div>
+
+    <div id="bg-blurs">
+        <div class="blur-shape shape1"></div>
+        <div class="blur-shape shape2"></div>
+    </div>
+
+    <header class="page-header">
+        <div class="page-header-content">
+            <span class="logo"> Virtualization Project</span>
+            <nav class="header-nav">
+                <ul>
+                    <li><a href="./beginer%20guide.html" class="active">Beginner's Guide</a></li>
+                    <li><a href="./index.html">Expert Guide</a></li>
+                    <li><a href="./macos%20architecture.html">macOS Architecture</a></li>
+                </ul>
+            </nav>
+            <button class="hamburger-btn">
+                <div class="line"></div>
+                <div class="line"></div>
+                <div class="line"></div>
+            </button>
+            <div class="scroll-progress-bar"></div>
+        </div>
+    </header>
+    
+    <nav class="mobile-nav">
+        <ul>
+            <li><a href="./beginer%20guide.html">Beginner's Guide</a></li>
+            <li><a href="./index.html">Expert Guide</a></li>
+            <li><a href="./macos%20architecture.html">macOS Architecture</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <aside id="sidebar">
+            <nav>
+                <div id="sidebar-indicator"></div>
+                <h3>Guide Sections</h3>
+                <ul>
+                    <li><a href="#introduction" class="nav-link active">Introduction</a></li>
+                    <li><a href="#requirements" class="nav-link">Phase 1: Requirements</a></li>
+                    <li><a href="#preparation" class="nav-link">Phase 2: Preparation</a></li>
+                    <li><a href="#vm-setup" class="nav-link">Phase 3: VM Setup</a></li>
+                    <li><a href="#installation" class="nav-link">Phase 4: Installation</a></li>
+                    <li><a href="#post-install" class="nav-link">Phase 5: Post-Install</a></li>
+                    <li><a href="#troubleshooting" class="nav-link">Troubleshooting</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main>
+            <section id="introduction" class="content-section">
+                <h1 class="stagger-animation">macOS on VMware</h1>
+                <p class="hero-subtitle stagger-animation">A step-by-step guide for beginners to install a fully-functional macOS virtual machine on a Windows PC.</p>
+                <p class="doc-meta">Last Updated: October 14, 2025 | Author: Rohan Chakravarty</p>
+                <p>Welcome! This guide is designed to be a clear and comprehensive walkthrough for anyone new to virtualizing macOS. We will go through every step in detail, explaining not just what to do, but why you're doing it. By the end, you'll have a working macOS virtual machine for development, testing, or exploration.</p>
+            </section>
+
+            <section id="requirements" class="content-section">
+                <h2>Phase 1: Gathering Your Tools (Requirements)</h2>
+                <p>Before we begin, you need to download all the necessary software. It's best to create a dedicated folder (e.g., <code>C:\VMware-macOS</code>) and save everything there to stay organized.</p>
+                <div class="glass-card">
+                    <h3>1. Python</h3>
+                    <p><strong>Why you need it:</strong> We need a script to download the official macOS files from Apple, and that script is written in Python.
+                    <br><strong>Action:</strong> Go to the official Python website and download the latest Windows installer. During installation, make sure to check the box that says <strong>"Add Python to PATH"</strong>.</p>
+                    <a href="https://www.python.org/downloads/" target="_blank">Download Python</a>
+                </div>
+                 <div class="glass-card">
+                    <h3>2. OpenCorePkg</h3>
+                    <p><strong>Why you need it:</strong> Think of this as a special key that tricks the macOS installer into thinking it's on a real Mac. It contains the Python script we need.
+                    <br><strong>Action:</strong> Download the latest <code>RELEASE</code> version (it will be a ZIP file).</p>
+                    <a href="https://github.com/acidanthera/OpenCorePkg/releases" target="_blank">Download OpenCorePkg</a>
+                </div>
+                <div class="glass-card">
+                    <h3>3. QEMU for Windows</h3>
+                    <p><strong>Why you need it:</strong> Apple's installer file (<code>.dmg</code>) is not compatible with VMware. QEMU contains a tool that can convert it to the correct format (<code>.vmdk</code>).
+                    <br><strong>Action:</strong> Download the most recent 64-bit installer and install it.</p>
+                     <a href="https://qemu.weilnetz.de/w64/" target="_blank">Download QEMU</a>
+                </div>
+                <div class="glass-card">
+                    <h3>4. VMware Workstation Pro</h3>
+                    <p><strong>Why you need it:</strong> This is the main program (the "hypervisor") that will create and run our virtual machine.
+                    <br><strong>Action:</strong> You must search for, download, and install this application. Make sure it is installed before proceeding.</p>
+                </div>
+                <div class="glass-card">
+                    <h3>5. VMware Unlocker</h3>
+                    <p><strong>Why you need it:</strong> By default, VMware for Windows doesn't let you install macOS. This patch "unlocks" that feature.
+                    <br><strong>Action:</strong> Download the latest version (a ZIP file).</p>
+                     <a href="https://github.com/paolo-projects/auto-unlocker/releases" target="_blank">Download Unlocker</a>
+                </div>
+            </section>
+
+            <section id="preparation" class="content-section">
+                <h2>Phase 2: Preparing the macOS Installer</h2>
+                <p>In this phase, we'll use the tools we downloaded to create a bootable installer file for VMware.</p>
+
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <h3>Download the macOS Recovery Image</h3>
+                    <p>First, extract the <code>OpenCorePkg-....zip</code> file. Inside, navigate to the <code>Utilities</code> folder, and then into the <code>macrecovery</code> folder. In the address bar of File Explorer, type <code>cmd</code> and press Enter. This will open a command prompt in the correct location.</p>
+                    <p>Now, run the Python script to download the files. This command downloads macOS Monterey, which is a stable choice.</p>
+                     <div class="code-block">
+                        <pre><code>python macrecovery.py -b Mac-E43C1C25D4880AD6 -m 00000000000000000 download</code></pre>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <h3>Convert the Image to VMDK</h3>
+                    <p>After the download, you will see a new folder named <code>com.apple.recovery.boot</code>. Inside is a file called <code>BaseSystem.dmg</code>. We need to convert this. Open a new command prompt or PowerShell window and run the following command. Note that if you installed QEMU elsewhere, you'll need to adjust the path.</p>
+                    <div class="code-block">
+                        <pre><code>"C:\Program Files\qemu\qemu-img.exe" convert -O vmdk "C:\path\to\your\folder\com.apple.recovery.boot\BaseSystem.dmg" "C:\path\to\your\folder\BaseSystem.vmdk"</code></pre>
+                    </div>
+                     <div class="info-box tip">
+                        <h4><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"></path></svg>Easy Path Tip</h4>
+                        Instead of typing the long paths, you can drag and drop the <code>qemu-img.exe</code> and <code>BaseSystem.dmg</code> files directly into the command prompt window. Just make sure to add the other parts of the command correctly.
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <h3>Patch VMware with the Unlocker</h3>
+                    <p>This step enables the "Apple Mac OS X" option in VMware.</p>
+                    <ol>
+                        <li><strong>Important:</strong> Close VMware Workstation completely. Go to Task Manager (Ctrl+Shift+Esc) and ensure no VMware processes are running.</li>
+                        <li>Extract the Unlocker zip file.</li>
+                        <li>Right-click on the <code>win-install.cmd</code> script and choose <strong>"Run as administrator"</strong>. A black window will appear and run some commands. Wait for it to finish and close automatically.</li>
+                    </ol>
+                </div>
+            </section>
+            
+            <section id="vm-setup" class="content-section">
+                <h2>Phase 3: Creating and Configuring the VM</h2>
+                <p>Now we will build the virtual machine inside VMware.</p>
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <h3>Create the Virtual Machine</h3>
+                    <p>Open VMware Workstation and follow the wizard:</p>
+                    <ol>
+                        <li>File > New Virtual Machine > Select "Typical (recommended)".</li>
+                        <li>Select "I will install the operating system later".</li>
+                        <li>Select "Apple Mac OS X" and choose the latest version (e.g., macOS 12). If this is not visible, the Unlocker patch failed.</li>
+                        <li>Give your VM a name (e.g., "macOS Monterey") and choose where to save it.</li>
+                        <li>Set the disk size to at least <strong>80 GB</strong> (128 GB is better). Select "Store virtual disk as a single file".</li>
+                        <li>On the final screen, click "Customize Hardware".</li>
+                    </ol>
+                </div>
+                 <div class="step">
+                    <div class="step-number">5</div>
+                    <h3>Configure Virtual Hardware</h3>
+                    <p>In the hardware customization window:</p>
+                     <ol>
+                        <li><strong>Memory:</strong> Give it at least 8 GB (8192 MB).</li>
+                        <li><strong>Processors:</strong> Give it at least 4 cores.</li>
+                        <li><strong>Hard Disk (SCSI/SATA):</strong> Select this and click the "Remove" button at the bottom. We will add our own.</li>
+                        <li>Click "Add...", choose "Hard Disk", select "SATA", then "Use an existing virtual disk". Browse and select the <code>BaseSystem.vmdk</code> file you created earlier.</li>
+                         <li><strong>CD/DVD Drive:</strong> Select this and on the right side, uncheck "Connect at power on".</li>
+                        <li>Click "Close" and then "Finish".</li>
+                    </ol>
+                </div>
+                 <div class="step">
+                    <div class="step-number">6</div>
+                    <h3>Edit the .vmx Configuration File</h3>
+                    <p>This is the most important step. Find where you saved your VM. There will be a file with a <code>.vmx</code> extension (e.g., <code>macOS Monterey.vmx</code>). Right-click it and open with Notepad.</p>
+                    <p>Scroll to the very bottom and paste these lines exactly as they are:</p>
+                     <div class="code-block">
+                        <pre><code>smc.version = "0"
+ethernet0.virtualDev = "vmxnet3"
+board-id.reflectHost = "FALSE"
+board-id = "Mac-937A206F2EE63C01"
+hw.model.reflectHost = "FALSE"
+hw.model = "MacBookPro15,1"
+serialNumber.reflectHost = "FALSE"
+serialNumber = "C01234567890"
+smbios.reflectHost = "TRUE"
+</code></pre>
+                    </div>
+                     <div class="info-box warning">
+                        <h4><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2V7h2v7z"></path></svg>AMD CPU Users</h4>
+                        If your computer has an AMD processor, you MUST add more lines. Paste the entire block of `cpuid` lines from the original document into your `.vmx` file as well.
+                    </div>
+                     <p>Save and close the file.</p>
+                </div>
+            </section>
+            
+            <section id="installation" class="content-section">
+                <h2>Phase 4: Installing macOS</h2>
+                <p>The preparation is complete. It's time to install the operating system.</p>
+                <div class="step">
+                    <div class="step-number">7</div>
+                    <h3>Boot and Format the Drive</h3>
+                    <p>In VMware, select your new VM and click "Power on". After a few moments, you should see the macOS Recovery screen.</p>
+                    <ol>
+                        <li>Select "Disk Utility" and continue.</li>
+                        <li>In the top menu bar of Disk Utility, click View > Show All Devices.</li>
+                        <li>On the left, select the top-level entry for your main disk (e.g., "VMware Virtual SATA Hard Drive Media").</li>
+                        <li>Click the "Erase" button. Name it <strong>Macintosh HD</strong>, set the Format to <strong>APFS</strong>, and Scheme to <strong>GUID Partition Map</strong>. Click Erase.</li>
+                        <li>When finished, close Disk Utility by clicking the red button.</li>
+                    </ol>
+                </div>
+                <div class="step">
+                    <div class="step-number">8</div>
+                    <h3>Install the Operating System</h3>
+                    <p>You are now back at the main recovery screen.</p>
+                    <ol>
+                        <li>Select "Reinstall macOS" and click Continue.</li>
+                        <li>Follow the on-screen prompts, agreeing to the license terms.</li>
+                        <li>When asked where to install, select the "Macintosh HD" drive you just created.</li>
+                    </ol>
+                    <p>The installation will now begin. It will download the full OS from Apple and may take a long time (30 minutes to over an hour) and restart several times. This is normal.</p>
+                </div>
+            </section>
+
+            <section id="post-install" class="content-section">
+                <h2>Phase 5: Post-Installation Cleanup</h2>
+                 <p>Once the installation is complete, you'll be greeted with the macOS setup assistant. Complete this as you would on a new Mac.</p>
+                  <div class="step">
+                    <div class="step-number">9</div>
+                    <h3>Install VMware Tools</h3>
+                    <p>This is a critical step for good performance.</p>
+                      <ol>
+                        <li>With the VM running, go to the VMware top menu: VM > Install VMware Tools...</li>
+                        <li>A virtual disc will appear on the macOS desktop. Double-click it and run the installer.</li>
+                        <li>You will need to go to System Preferences > Security & Privacy and click "Allow" to enable the system extension. Follow the prompts and restart the VM when finished.</li>
+                      </ol>
+                </div>
+                 <div class="step">
+                    <div class="step-number">10</div>
+                    <h3>Final Cleanup</h3>
+                     <p>Shut down the macOS VM. Go back into the VM settings. Select the "Hard Disk (SATA)" that points to your <code>BaseSystem.vmdk</code> file and click "Remove". Your VM will now boot from the main drive you installed macOS onto.</p>
+                </div>
+            </section>
+            
+            <section id="troubleshooting" class="content-section">
+                <h2>Troubleshooting</h2>
+                 <div class="glass-card">
+                    <h3>Stuck on the Apple Logo?</h3>
+                    <p>This is the most common problem. It is almost always a typo in your <code>.vmx</code> file. Open it again and carefully check every single character of the lines you added.</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <footer class="page-footer">
+        <p>This guide is for educational purposes. macOS is a trademark of Apple Inc. | Based on an original guide by Rohan Chakravarty.</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const cursor = document.getElementById('cursor');
+            const follower = document.getElementById('cursor-follower');
+            const interactiveElements = document.querySelectorAll('a, button, .glass-card');
+            const progressBar = document.querySelector('.scroll-progress-bar');
+            const blurShapes = document.querySelectorAll('.blur-shape');
+            const sections = document.querySelectorAll('.content-section');
+            const navLinks = document.querySelectorAll('.nav-link');
+            const sidebarIndicator = document.getElementById('sidebar-indicator');
+            const staggerElements = document.querySelectorAll('.stagger-animation');
+            const hamburgerBtn = document.querySelector('.hamburger-btn');
+            const mobileNav = document.querySelector('.mobile-nav');
+
+            // --- Mobile Nav Toggle ---
+            hamburgerBtn.addEventListener('click', () => {
+                const isActive = hamburgerBtn.classList.contains('is-active');
+                hamburgerBtn.classList.toggle('is-active');
+                mobileNav.classList.toggle('is-active');
+                document.body.classList.toggle('mobile-nav-open');
+            });
+
+
+            // --- Custom Cursor Logic ---
+            let mouseX = 0, mouseY = 0;
+            let followerX = 0, followerY = 0;
+
+            document.addEventListener('mousemove', e => {
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+                // Interaction for background blur shapes
+                blurShapes.forEach(shape => {
+                    const speed = shape.classList.contains('shape1') ? 20 : -20;
+                    const x = (window.innerWidth / 2 - mouseX) / speed;
+                    const y = (window.innerHeight / 2 - mouseY) / speed;
+                    shape.style.transform = `translateX(${x}px) translateY(${y}px)`;
+                });
+            });
+
+            function animateCursor() {
+                followerX += (mouseX - followerX - 20) * 0.2;
+                followerY += (mouseY - followerY - 20) * 0.2;
+                cursor.style.transform = `translate(${mouseX - 4}px, ${mouseY - 4}px)`;
+                follower.style.transform = `translate(${followerX}px, ${followerY}px)`;
+                requestAnimationFrame(animateCursor);
+            }
+            animateCursor();
+
+            interactiveElements.forEach(el => {
+                el.addEventListener('mouseenter', () => {
+                    cursor.classList.add('active');
+                    follower.classList.add('active');
+                });
+                el.addEventListener('mouseleave', () => {
+                    cursor.classList.remove('active');
+                    follower.classList.remove('active');
+                });
+            });
+
+            // --- Staggered Text Animation ---
+            staggerElements.forEach(el => {
+                const text = el.innerText;
+                el.innerHTML = '';
+                text.split('').forEach((char, index) => {
+                    const span = document.createElement('span');
+                    span.innerText = char === ' ' ? '\u00A0' : char;
+                    span.style.transitionDelay = `${index * 0.02}s`;
+                    el.appendChild(span);
+                });
+            });
+            
+            // --- Scroll Animations & Progress Bar ---
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('visible');
+                        if (entry.target.querySelector('.stagger-animation')) {
+                            entry.target.querySelectorAll('.stagger-animation span').forEach(span => {
+                                span.style.opacity = '1';
+                                span.style.transform = 'translateY(0)';
+                            });
+                        }
+                    }
+                });
+            }, { threshold: 0.1 });
+            sections.forEach(section => observer.observe(section));
+
+            window.addEventListener('scroll', () => {
+                const scrollableHeight = document.documentElement.scrollHeight - window.innerHeight;
+                const scrolled = (window.scrollY / scrollableHeight) * 100;
+                progressBar.style.width = `${scrolled}%`;
+            });
+
+            // --- Active Nav Link Highlighting with Fluid Indicator ---
+            const navObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const id = entry.target.getAttribute('id');
+                        const activeLink = document.querySelector(`.nav-link[href="#${id}"]`);
+                        
+                        if (activeLink) {
+                            navLinks.forEach(link => link.classList.remove('active'));
+                            activeLink.classList.add('active');
+
+                            if (sidebarIndicator) {
+                                sidebarIndicator.style.top = `${activeLink.offsetTop}px`;
+                                sidebarIndicator.style.height = `${activeLink.offsetHeight}px`;
+                            }
+                        }
+                    }
+                });
+            }, { rootMargin: '-40% 0px -60% 0px' });
+            
+            sections.forEach(section => navObserver.observe(section));
+            // Set initial position for indicator
+            const initialActiveLink = document.querySelector('.nav-link.active');
+             if (sidebarIndicator && initialActiveLink) {
+                sidebarIndicator.style.top = `${initialActiveLink.offsetTop}px`;
+                sidebarIndicator.style.height = `${initialActiveLink.offsetHeight}px`;
+            }
+
+        });
+    </script>
+</body>
+</html>
+

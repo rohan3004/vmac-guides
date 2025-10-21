@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>macOS Architecture: A Developer's Perspective</title>
+    <link rel="icon" href="https://www.rohandev.online/favicon.ico" />
+    <style>
+        /* ---  Apple-Inspired Design System --- */
+        :root {
+            --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            --font-mono: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
+            --color-bg: #111217;
+            --color-primary-text: #f5f5f7;
+            --color-secondary-text: #a1a1a6;
+            --color-accent-blue: #0A84FF;
+            --color-accent-green: #30D158;
+            --color-accent-red: #FF453A;
+            --color-accent-yellow: #FFD60A;
+            --glass-bg: rgba(35, 35, 45, 0.5);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --glass-blur: 24px;
+        }
+
+        /* --- Base & Reset --- */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--color-bg);
+            color: var(--color-primary-text);
+            line-height: 1.7;
+            overflow-x: hidden;
+            cursor: none; /* Hide default cursor */
+        }
+        ::selection { background: var(--color-accent-blue); color: white; }
+
+        /* --- Custom Cursor --- */
+        #cursor, #cursor-follower {
+            position: fixed;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 9999;
+            border-radius: 50%;
+            transition: transform 0.2s ease-out, opacity 0.3s ease-out;
+        }
+        #cursor {
+            width: 8px;
+            height: 8px;
+            background-color: var(--color-accent-blue);
+        }
+        #cursor-follower {
+            width: 40px;
+            height: 40px;
+            background-color: rgba(10, 132, 255, 0.2);
+            border: 1px solid rgba(10, 132, 255, 0.3);
+            transition: transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1), opacity 0.3s ease-out, background-color 0.3s ease;
+        }
+        #cursor.active { transform: scale(0.5); }
+        #cursor-follower.active { transform: scale(1.5); background-color: rgba(10, 132, 255, 0.3); }
+
+
+        /* --- Animated Background --- */
+        #bg-blurs {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; overflow: hidden;
+        }
+        .blur-shape {
+            position: absolute; border-radius: 50%; filter: blur(150px); opacity: 0.5; transition: transform 0.8s ease-out;
+        }
+        .shape1 { width: 50vmax; height: 50vmax; background: rgba(0, 122, 255, 0.3); top: -20vh; left: -20vw; }
+        .shape2 { width: 40vmax; height: 40vmax; background: rgba(88, 86, 214, 0.2); bottom: -10vh; right: -15vw; }
+
+        /* --- Header & Footer --- */
+        .page-header, .page-footer {
+            background: var(--glass-bg);
+            backdrop-filter: blur(var(--glass-blur));
+            -webkit-backdrop-filter: blur(var(--glass-blur));
+            border-bottom: 1px solid var(--glass-border);
+            padding: 0 2rem;
+            z-index: 10;
+        }
+        .page-header {
+            position: fixed; top: 0; left: 0; width: 100%; height: 56px;
+        }
+        .page-header-content {
+            max-width: 1400px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; height: 100%;
+        }
+        .page-header-content .logo { font-weight: 600; font-size: 1.1rem; }
+         .header-nav ul { display: flex; gap: 0.5rem; list-style: none; }
+        .header-nav a {
+            color: var(--color-secondary-text); text-decoration: none; padding: 0.5rem 1rem; border-radius: 8px; transition: color 0.3s ease, background-color 0.3s ease; font-size: 0.9rem; position: relative;
+        }
+        .header-nav a:hover { color: var(--color-primary-text); background-color: rgba(255, 255, 255, 0.05); }
+        .header-nav a.active { color: var(--color-primary-text); font-weight: 500; }
+        
+        .hamburger-btn {
+            display: none;
+            background: none;
+            border: none;
+            padding: 0.5rem;
+            z-index: 10001; /* Ensure it's above the mobile nav */
+            position: relative;
+            width: 40px;
+            height: 40px;
+        }
+        .hamburger-btn .line {
+            position: absolute;
+            left: 50%;
+            width: 24px;
+            height: 2px;
+            background-color: var(--color-primary-text);
+            margin-left: -12px;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+        .hamburger-btn .line1 { top: 12px; }
+        .hamburger-btn .line2 { top: 19px; }
+        .hamburger-btn .line3 { top: 26px; }
+
+        .hamburger-btn.open .line1 {
+            transform: translateY(7px) rotate(45deg);
+        }
+        .hamburger-btn.open .line2 {
+            opacity: 0;
+        }
+        .hamburger-btn.open .line3 {
+            transform: translateY(-7px) rotate(-45deg);
+        }
+
+        .mobile-nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(17, 18, 23, 0.8);
+            backdrop-filter: blur(var(--glass-blur));
+            -webkit-backdrop-filter: blur(var(--glass-blur));
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(1.05);
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        .mobile-nav.open {
+            opacity: 1;
+            pointer-events: auto;
+            transform: scale(1);
+        }
+        .mobile-nav ul {
+            list-style: none;
+            padding: 0;
+            text-align: center;
+        }
+        .mobile-nav li {
+             opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        .mobile-nav.open li {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .mobile-nav a {
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--color-primary-text);
+            padding: 1rem;
+            display: block;
+            text-decoration: none;
+        }
+        
+        .scroll-progress-bar {
+            position: absolute; bottom: -1px; left: 0; height: 1px; background-color: var(--color-accent-blue); width: 0; transition: width 0.1s ease-out;
+        }
+        .page-footer {
+            border-top: 1px solid var(--glass-border); border-bottom: none; margin-top: 4rem;
+        }
+        .page-footer p {
+            max-width: 1400px; margin: 0 auto; padding: 2rem 0; text-align: center; font-size: 0.8rem; color: var(--color-secondary-text);
+        }
+
+        /* --- Main Layout --- */
+        .container {
+            display: grid; grid-template-columns: 240px 1fr; gap: 2rem; max-width: 1400px; margin: 0 auto; padding: 6rem 2rem 0;
+        }
+
+        /* --- Floating Navigation Sidebar --- */
+        #sidebar {
+            position: sticky; top: calc(56px + 2rem); height: calc(100vh - 56px - 4rem); align-self: start;
+        }
+        #sidebar nav { position: relative; }
+        #sidebar nav h3 {
+            font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-secondary-text); margin-bottom: 1rem; padding-left: 1rem;
+        }
+        #sidebar nav ul { list-style: none; }
+        #sidebar nav a {
+            display: block; padding: 0.5rem 1rem; color: var(--color-secondary-text); text-decoration: none; font-size: 0.9rem; border-radius: 8px; transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease; position: relative;
+        }
+        #sidebar nav a:hover {
+            color: var(--color-primary-text); background-color: rgba(255, 255, 255, 0.05); transform: translateX(5px);
+        }
+        #sidebar nav a.active {
+            color: var(--color-primary-text); font-weight: 600;
+        }
+        #sidebar-indicator {
+            position: absolute; left: 0; width: 3px; background-color: var(--color-accent-blue); border-radius: 2px; transition: top 0.4s cubic-bezier(0.22, 1, 0.36, 1), height 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        /* --- Main Content --- */
+        main { min-width: 0; }
+        .content-section {
+            padding-top: 2rem; margin-bottom: 4rem; opacity: 0; transform: translateY(20px); transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+        }
+        .content-section.visible { opacity: 1; transform: translateY(0); }
+
+        /* --- Typography & Elements --- */
+        h1 { font-size: 3rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.5rem; line-height: 1.1; }
+        .hero-subtitle { font-size: 1.25rem; color: var(--color-secondary-text); max-width: 60ch; margin-bottom: 1rem; }
+        .stagger-animation span { display: inline-block; opacity: 0; transform: translateY(20px); transition: opacity 0.6s ease, transform 0.6s ease; }
+        .doc-meta { font-size: 0.8rem; color: var(--color-secondary-text); margin-bottom: 4rem; }
+        h2 { font-size: 2rem; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 1.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--glass-border); }
+        h3 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; margin: 1.5rem 0 0.75rem 0; }
+        p, li { font-size: 1rem; color: var(--color-secondary-text); margin-bottom: 1rem; max-width: 70ch; }
+        ul, ol { padding-left: 1.5rem; }
+        a { color: var(--color-accent-blue); text-decoration: none; font-weight: 500; }
+        a:hover { text-decoration: underline; }
+        strong { color: var(--color-primary-text); font-weight: 600; }
+        code { font-family: var(--font-mono); background-color: rgba(255,255,255,0.1); padding: 0.2em 0.4em; border-radius: 4px; font-size: 0.9em; }
+
+        .glass-card {
+            background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); border: 1px solid var(--glass-border); border-radius: 16px; padding: 1.5rem; margin-bottom: 1rem; position: relative; overflow: hidden; transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s ease;
+        }
+        .glass-card:hover {
+            transform: perspective(1000px) rotateX(5deg) translateY(-5px); box-shadow: 0 15px 35px rgba(0,0,0,0.3);
+        }
+        .glass-card::after { /* Shimmer effect */
+            content: ''; position: absolute; top: 0; left: -150%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent); transition: left 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .glass-card:hover::after { left: 150%; }
+        
+        .info-box { padding: 1rem 1.5rem; border-radius: 12px; border-left: 4px solid; margin: 1.5rem 0; font-size: 0.9rem; }
+        .info-box h4 { display: flex; align-items: center; font-size: 1rem; margin: 0 0 0.5rem 0; color: var(--color-primary-text); }
+        .info-box h4 svg { margin-right: 0.75rem; width: 18px; height: 18px; flex-shrink: 0; }
+        .info-box.tip { background-color: rgba(48, 209, 88, 0.1); border-color: var(--color-accent-green); }
+        .info-box.warning { background-color: rgba(255, 69, 58, 0.1); border-color: var(--color-accent-red); }
+        .info-box.tech { background-color: rgba(255, 214, 10, 0.1); border-color: var(--color-accent-yellow); }
+
+        /* --- Responsive Design --- */
+        @media (max-width: 1024px) {
+            .container { grid-template-columns: 1fr; padding: 6rem 1rem 0; }
+            #sidebar { display: none; }
+            h1 { font-size: 2.5rem; }
+            h2 { font-size: 1.75rem; }
+            .header-nav { display: none; }
+            .hamburger-btn { display: block; }
+        }
+    </style>
+</head>
+<body>
+    <div id="cursor"></div>
+    <div id="cursor-follower"></div>
+
+    <div id="bg-blurs">
+        <div class="blur-shape shape1"></div>
+        <div class="blur-shape shape2"></div>
+    </div>
+
+    <header class="page-header">
+        <div class="page-header-content">
+            <span class="logo"> Virtualization Project</span>
+             <nav class="header-nav">
+                <ul>
+                    <li><a href="./beginer%20guide.html">Beginner's Guide</a></li>
+                    <li><a href="./index.html">Expert Guide</a></li>
+                    <li><a href="./macos%20architecture.html" class="active">macOS Architecture</a></li>
+                </ul>
+            </nav>
+            <button class="hamburger-btn">
+                <div class="line line1"></div>
+                <div class="line line2"></div>
+                <div class="line line3"></div>
+            </button>
+            <div class="scroll-progress-bar"></div>
+        </div>
+    </header>
+
+    <nav class="mobile-nav">
+        <ul>
+            <li style="transition-delay: 0.1s;"><a href="./beginer%20guide.html">Beginner's Guide</a></li>
+            <li style="transition-delay: 0.2s;"><a href="./index.html">Expert Guide</a></li>
+            <li style="transition-delay: 0.3s;"><a href="./macos%20architecture.html">macOS Architecture</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <aside id="sidebar">
+            <nav>
+                <div id="sidebar-indicator"></div>
+                <h3>Research Paper</h3>
+                <ul>
+                    <li><a href="#introduction" class="nav-link active">Introduction</a></li>
+                    <li><a href="#xnu" class="nav-link">The XNU Kernel</a></li>
+                    <li><a href="#darwin" class="nav-link">Darwin & Core OS</a></li>
+                    <li><a href="#graphics" class="nav-link">Graphics & Media</a></li>
+                    <li><a href="#application" class="nav-link">Application Frameworks</a></li>
+                    <li><a href="#security" class="nav-link">Security Architecture</a></li>
+                    <li><a href="#conclusion" class="nav-link">Conclusion</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main>
+            <section id="introduction" class="content-section">
+                <h1 class="stagger-animation">The macOS Architecture</h1>
+                <p class="hero-subtitle stagger-animation">A layered approach to power, stability, and user experience. A deep dive for developers and system architects.</p>
+                <p class="doc-meta">Published: October 14, 2025 | Author: Rohan Chakravarty</p>
+                <p>macOS, the operating system powering Apple's Macintosh computers, is a sophisticated piece of engineering with a rich history rooted in NeXTSTEP and the BSD UNIX ecosystem. To a developer, understanding its architecture is not merely academic; it is the key to creating applications that are performant, secure, and deeply integrated with the platform. This paper examines the distinct layers of macOS, from the kernel to the user interface, to provide a comprehensive architectural overview.</p>
+            </section>
+
+            <section id="xnu" class="content-section">
+                <h2>The Core: XNU Kernel</h2>
+                <p>At the absolute core of macOS is the <strong>XNU kernel</strong>. XNU stands for "X is Not Unix", a recursive acronym paying homage to its heritage. It is a hybrid kernel, combining the clean abstractions of a microkernel with the performance and feature-richness of a monolithic kernel.</p>
+                <div class="glass-card">
+                    <h3>The Mach Microkernel</h3>
+                    <p>Mach forms the lowest-level foundation of XNU. Its primary responsibilities are minimal but critical:</p>
+                    <ul>
+                        <li><strong>Tasks & Threads:</strong> Mach's scheduler manages threads, the basic unit of execution. A task is an environment or address space in which threads run.</li>
+                        <li><strong>Virtual Memory:</strong> It manages the address space for each task, handling paging, memory protection, and sharing.</li>
+                        <li><strong>Inter-Process Communication (IPC):</strong> Mach's core feature is its fast, secure, and location-agnostic message-passing system. Processes communicate by sending messages to `ports` (secure mailboxes), which is fundamental to how system services are structured.</li>
+                    </ul>
+                </div>
+                 <div class="glass-card">
+                    <h3>The BSD Layer</h3>
+                    <p>Built atop Mach is a comprehensive personality layer derived from FreeBSD. The BSD layer provides the POSIX compatibility that makes macOS a UNIX-compliant system. Its contributions include:</p>
+                    <ul>
+                        <li><strong>Process Model:</strong> While Mach handles threads, BSD provides the familiar UNIX concept of a "process" that owns resources.</li>
+                        <li><strong>File Systems & VFS:</strong> Management of file systems like APFS, along with the Virtual File System (VFS) layer that allows macOS to seamlessly interact with various disk formats.</li>
+                        <li><strong>Networking Stack:</strong> A full Berkeley Sockets API and TCP/IP implementation.</li>
+                        <li><strong>User, Group, & Permissions Model:</strong> The traditional UNIX security and permissions model.</li>
+                    </ul>
+                </div>
+                <div class="glass-card">
+                    <h3>I/O Kit</h3>
+                    <p>The I/O Kit is an object-oriented device driver framework written in a restricted C++. It is responsible for dynamic driver loading (kernel extensions or `kexts`), power management, and managing the device tree, from USB controllers to graphics cards.</p>
+                </div>
+            </section>
+            
+            <section id="darwin" class="content-section">
+                <h2>Darwin & The Core OS Layer</h2>
+                <p>The XNU kernel, along with a suite of user-land libraries and daemons, forms the open-source core of macOS known as <strong>Darwin</strong>. This layer provides the fundamental, non-graphical services upon which the rest of the OS is built.</p>
+                 <div class="glass-card">
+                    <h3>Key Darwin Components</h3>
+                    <ul>
+                        <li><strong>libSystem:</strong> The fundamental system library. It provides access to POSIX/BSD APIs and Mach-based services. All user-space processes link against it.</li>
+                        <li><strong>launchd:</strong> The system-wide service manager. It replaced older UNIX systems like `init`, `rc`, and `cron`. It manages the launching of daemons and agents on demand, contributing to fast boot times and efficient resource use.</li>
+                        <li><strong>libdispatch (Grand Central Dispatch):</strong> A powerful concurrency library that abstracts thread management away from the developer. GCD provides simple APIs for submitting tasks to managed queues, automatically optimizing for the number of available cores.</li>
+                        <li><strong>dyld (Dynamic Linker):</strong> Responsible for loading an application's dependent dynamic libraries (`.dylibs`) into its address space at launch time.</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section id="graphics" class="content-section">
+                <h2>Graphics & Media Layer</h2>
+                <p>This layer is responsible for all drawing, multimedia, and advanced visual effects. It is a collection of powerful frameworks that abstract the underlying GPU hardware.</p>
+                <div class="glass-card">
+                    <h3>Core Graphics (Quartz)</h3>
+                    <p>Quartz is the primary 2D graphics rendering engine. It provides a resolution-independent and device-independent drawing model based on the PDF specification. The <strong>Quartz Compositor</strong> acts as the windowing server, compositing all the windows and UI elements into a final image for the screen.</p>
+                </div>
+                <div class="glass-card">
+                    <h3>Metal</h3>
+                    <p>Metal is Apple's modern, low-overhead API for GPU programming. It provides near-direct access to the GPU hardware for maximum performance. It is used for games, professional graphics applications, and GPU-accelerated compute tasks (e.g., machine learning via Metal Performance Shaders).</p>
+                </div>
+                 <div class="glass-card">
+                    <h3>Core Animation</h3>
+                    <p>Despite its name, Core Animation is the fundamental compositing engine of macOS. Apps don't draw directly to the screen; they provide a tree of `CALayer` objects representing their content. Core Animation composites these layers on the GPU, enabling incredibly fluid animations and effects with minimal CPU overhead.</p>
+                </div>
+                 <div class="glass-card">
+                    <h3>Other Key Frameworks</h3>
+                    <p><strong>Core Image</strong> provides a plugin-based architecture for applying real-time filters and effects to images and video. <strong>Core Audio</strong> is the low-level API for all audio processing. <strong>AVFoundation</strong> provides a block-based API for handling time-based audiovisual media.</p>
+                </div>
+            </section>
+            
+            <section id="application" class="content-section">
+                <h2>Application Frameworks Layer</h2>
+                <p>This layer contains the technologies that developers interact with most directly to build applications.</p>
+                 <div class="glass-card">
+                    <h3>Foundation</h3>
+                    <p>Built on top of Core Foundation (a C-based library), the Foundation framework provides the essential object-oriented building blocks for apps: data types (<code>NSString</code>, <code>NSArray</code>), collections, file system access, networking, and run loops.</p>
+                </div>
+                 <div class="glass-card">
+                    <h3>AppKit</h3>
+                    <p>For traditional macOS development, AppKit is the primary framework. It is an imperative, event-driven framework that provides the UI elements (windows, buttons, text fields) and application structure.</p>
+                </div>
+                <div class="glass-card">
+                    <h3>SwiftUI</h3>
+                    <p>SwiftUI is Apple's modern, declarative framework for building user interfaces across all Apple platforms. The developer defines the UI's state, and the framework automatically handles rendering and updates, representing a major paradigm shift.</p>
+                </div>
+                <div class="glass-card">
+                    <h3>Core Data</h3>
+                    <p>Core Data is not a database but an object graph management and persistence framework. It allows developers to manage a model of their application's data and persist it to disk as a SQLite store or other formats.</p>
+                </div>
+            </section>
+            
+            <section id="security" class="content-section">
+                <h2>Security Architecture</h2>
+                <p>macOS employs a multi-layered security model to protect the system and user data from malware and unauthorized access.</p>
+                 <div class="glass-card">
+                    <h3>System Integrity Protection (SIP)</h3>
+                    <p>SIP protects critical system files (e.g., in <code>/System</code>, <code>/usr</code>) from being modified, even by the root user. This makes it extremely difficult for malware to compromise the core OS.</p>
+                </div>
+                 <div class="glass-card">
+                    <h3>Gatekeeper & Notarization</h3>
+                    <p>Gatekeeper ensures that only trusted software runs. By default, it requires apps to be from the App Store or signed by a registered developer and notarized by Apple, a process where Apple scans the app for malicious code.</p>
+                </div>
+                <div class="glass-card">
+                    <h3>App Sandboxing & TCC</h3>
+                    <p>Sandboxing restricts apps to their own container with limited access to the system. An app must request specific "entitlements" to access resources outside its sandbox. <strong>TCC (Transparency, Consent, and Control)</strong> manages user privacy prompts for access to sensitive data like the camera, microphone, and user files.</p>
+                </div>
+                 <div class="glass-card">
+                    <h3>Secure Enclave</h3>
+                    <p>On modern Macs with Apple Silicon, the Secure Enclave is a dedicated hardware coprocessor that handles cryptographic operations for sensitive data, such as Touch ID, Face ID, and keychain passwords, keeping them isolated from the main processor.</p>
+                </div>
+            </section>
+            
+             <section id="conclusion" class="content-section">
+                <h2>Conclusion for Developers</h2>
+                 <p>The layered architecture of macOS provides a powerful and stable platform for application development. By understanding these layers, a developer can make more informed decisions, leading to better, more performant, and more secure applications that feel truly at home on the Mac.</p>
+            </section>
+        </main>
+    </div>
+
+    <footer class="page-footer">
+        <p>This research paper is for educational purposes. macOS, Darwin, and XNU are trademarks of Apple Inc.</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const cursor = document.getElementById('cursor');
+            const follower = document.getElementById('cursor-follower');
+            const interactiveElements = document.querySelectorAll('a, button, .glass-card');
+            const progressBar = document.querySelector('.scroll-progress-bar');
+            const blurShapes = document.querySelectorAll('.blur-shape');
+            const sections = document.querySelectorAll('.content-section');
+            const navLinks = document.querySelectorAll('.nav-link');
+            const sidebarIndicator = document.getElementById('sidebar-indicator');
+            const staggerElements = document.querySelectorAll('.stagger-animation');
+            const hamburgerBtn = document.querySelector('.hamburger-btn');
+            const mobileNav = document.querySelector('.mobile-nav');
+
+            // --- Mobile Nav Toggle ---
+            hamburgerBtn.addEventListener('click', () => {
+                const isOpen = mobileNav.classList.contains('open');
+                mobileNav.classList.toggle('open');
+                hamburgerBtn.classList.toggle('open');
+                document.body.classList.toggle('mobile-nav-open');
+            });
+
+            // --- Custom Cursor Logic ---
+            let mouseX = 0, mouseY = 0;
+            let
+
